@@ -1,8 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { hasValidSupabaseConfig } from "./config";
 
 export function isSupabaseServerConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  return hasValidSupabaseConfig();
 }
 
 export async function createSupabaseServerClient() {
