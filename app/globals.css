@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #26213a;
+  --muted: #817b96;
+  --lavender: #7354c7;
+  --lavender-soft: #f5f1ff;
+  --line: #eeeaf5;
+  --canvas: #faf9fc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--canvas);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 82% 0%, rgba(232, 224, 255, 0.46), transparent 30rem),
+    var(--canvas);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(146, 115, 230, 0.35);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: var(--ink);
+  background: #e8e0ff;
+}
+
+@layer components {
+  .surface {
+    @apply rounded-3xl border border-[#eeeaf5] bg-white shadow-card;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.18em] text-[#9273e6];
+  }
+
+  .quiet-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-[#eeeaf5] bg-white px-3 py-2 text-sm font-semibold text-[#5d5871] transition hover:border-[#d5c7ff] hover:bg-[#fbfaff] hover:text-[#5c40a8] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .primary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-[#7354c7] px-4 py-2.5 text-sm font-bold text-white shadow-soft transition hover:bg-[#5c40a8] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-[#e8e3f1] bg-[#fcfbff] px-3.5 py-3 text-sm text-[#26213a] placeholder:text-[#aaa5b8] transition focus:border-[#b8a2f5] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#f5f1ff];
+  }
+}
+
+.mimo-float {
+  animation: gentle-float 5s ease-in-out infinite;
+}
+
+@keyframes gentle-float {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mimo-float { animation: none; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
