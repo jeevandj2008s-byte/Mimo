@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { isCitation, isMemory, MAX_CONTENT_LENGTH, MAX_TITLE_LENGTH } from "@/lib/validation";
 import type { Memory, RecallAnswer } from "@/lib/types";
+import { searchMemories } from "@/lib/search-memories";
+import { createSupabaseServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -97,19 +99,30 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object") return jsonError("The request body is required.", 400, "INVALID_BODY");
   const candidate = body as Record<string, unknown>;
   const question = typeof candidate.question === "string" ? candidate.question.trim() : "";
-  const submittedMemories = candidate.memories;
 
   if (!question || question.length > MAX_QUESTION_LENGTH) {
     return jsonError(`Questions must be between 1 and ${MAX_QUESTION_LENGTH} characters.`, 400, "INVALID_QUESTION");
   }
-  if (!Array.isArray(submittedMemories) || submittedMemories.length === 0 || submittedMemories.length > MAX_MEMORIES) {
-    return jsonError(`Send between 1 and ${MAX_MEMORIES} relevant memories.`, 400, "INVALID_MEMORIES");
+  let memories: Memory[];
+  if (isSupabaseServerConfigured()) {
+    const supabase = await createSupabaseServerClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) return jsonError("Sign in before asking Mimo about private memories.", 401, "AUTH_REQUIRED");
+    const { data, error } = await supabase.from("memories").select("id,title,content,tags,created_at,updated_at").order("updated_at", { ascending: false });
+    if (error) return jsonError("Mimo could not read this account’s memories. Check the Supabase memories table and Row Level Security setup.", 500, "MEMORY_STORE_ERROR");
+    const storedMemories = (data as Array<{ id: string; title: string; content: string; tags: string[]; created_at: string; updated_at: string }>).map((memory) => ({ id: memory.id, title: memory.title, content: memory.content, tags: memory.tags ?? [], createdAt: memory.created_at, updatedAt: memory.updated_at }));
+    memories = searchMemories(question, storedMemories, { limit: MAX_MEMORIES });
+    if (memories.length === 0) {
+      return NextResponse.json({ answer: "I couldn't find that in your memories yet. Want to save it?", citations: [], insufficientEvidence: true });
+    }
+  } else {
+    const submittedMemories = candidate.memories;
+    if (!Array.isArray(submittedMemories) || submittedMemories.length === 0 || submittedMemories.length > MAX_MEMORIES) {
+      return jsonError(`Send between 1 and ${MAX_MEMORIES} relevant memories.`, 400, "INVALID_MEMORIES");
+    }
+    if (!submittedMemories.every(validSubmittedMemory)) return jsonError("One or more memories are invalid.", 400, "INVALID_MEMORY");
+    memories = submittedMemories as Memory[];
   }
-  if (!submittedMemories.every(validSubmittedMemory)) {
-    return jsonError("One or more memories are invalid.", 400, "INVALID_MEMORY");
-  }
-
-  const memories = submittedMemories as Memory[];
   const context = memories
     .map(
       (memory) =>

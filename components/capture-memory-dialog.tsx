@@ -9,7 +9,7 @@ type CaptureMemoryDialogProps = {
   open: boolean;
   memory?: Memory | null;
   onClose: () => void;
-  onSave: (input: MemoryInput) => void;
+  onSave: (input: MemoryInput) => void | Promise<void>;
 };
 
 export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMemoryDialogProps) {
@@ -17,6 +17,7 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
   const [errors, setErrors] = useState<MemoryValidationErrors>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -29,12 +30,17 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
   if (!open) return null;
 
   const isEditing = Boolean(memory);
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const result = validateMemoryInput({ title, content, tags: tags.split(",") });
     setErrors(result.errors);
     if (!result.valid || !result.value) return;
-    onSave(result.value);
+    setSaving(true);
+    try {
+      await onSave(result.value);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -69,8 +75,8 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
             {errors.tags ? <p className="mt-1.5 text-xs font-semibold text-[#bd6c8d]">{errors.tags}</p> : null}
           </div>
           <div className="flex flex-col-reverse gap-2 border-t border-[#f1eef7] pt-5 sm:flex-row sm:justify-end">
-            <button className="quiet-button" onClick={onClose} type="button">Cancel</button>
-            <button className="primary-button" type="submit"><Check size={16} /> {isEditing ? "Save changes" : "Save memory"}</button>
+            <button className="quiet-button" disabled={saving} onClick={onClose} type="button">Cancel</button>
+            <button className="primary-button" disabled={saving} type="submit"><Check size={16} /> {saving ? "Saving..." : isEditing ? "Save changes" : "Save memory"}</button>
           </div>
         </form>
       </div>

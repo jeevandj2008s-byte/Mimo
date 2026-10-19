@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Clock3, Search, Sparkles } from "lucide-react";
+import { AccountMenu } from "@/components/account-menu";
+import { useAuth } from "@/components/auth-provider";
 import { AnswerPanel } from "@/components/answer-panel";
 import { AppSidebar, type AppView, MimoMark } from "@/components/app-sidebar";
 import { AskPanel } from "@/components/ask-panel";
@@ -11,14 +13,17 @@ import { MemoryCard } from "@/components/memory-card";
 import { SourceViewer } from "@/components/source-viewer";
 import { cloneDemoMemories } from "@/lib/demo-data";
 import { addDemoMemories, createMemory, loadMemories, persistMemories, updateMemory } from "@/lib/memory-store";
+import { createCloudMemory, deleteCloudMemory, insertCloudMemories, loadCloudMemories, updateCloudMemory } from "@/lib/memory-repository";
 import { searchMemories } from "@/lib/search-memories";
 import type { Memory, MemoryInput, RecallAnswer } from "@/lib/types";
 
 const DEMO_QUESTION = "What did I decide to build first for my AI project, and why?";
 
 export default function HomePage() {
+  const auth = useAuth();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [memoryLoading, setMemoryLoading] = useState(true);
   const [view, setView] = useState<AppView>("workspace");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<RecallAnswer | null>(null);
@@ -31,13 +36,29 @@ export default function HomePage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    setMemories(loadMemories());
-    setHydrated(true);
-  }, []);
+    if (auth.loading) return;
+    let active = true;
+    setMemoryLoading(true);
+    setMemories([]);
+    void (async () => {
+      try {
+        const nextMemories = auth.configured && auth.user ? await loadCloudMemories() : loadMemories();
+        if (active) setMemories(nextMemories);
+      } catch {
+        if (active) setNotice("Mimo could not load this account’s memories. Check that the Supabase memories table is set up.");
+      } finally {
+        if (active) {
+          setHydrated(true);
+          setMemoryLoading(false);
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [auth.configured, auth.loading, auth.user]);
 
   useEffect(() => {
-    if (hydrated) persistMemories(memories);
-  }, [hydrated, memories]);
+    if (hydrated && !auth.user) persistMemories(memories);
+  }, [auth.user, hydrated, memories]);
 
   const recentMemories = memories.slice(0, 3);
   const filteredMemories = useMemo(() => {
@@ -56,29 +77,51 @@ export default function HomePage() {
     setCaptureOpen(true);
   };
 
-  const handleSaveMemory = (input: MemoryInput) => {
-    if (editingMemory) {
-      setMemories((current) => current.map((memory) => memory.id === editingMemory.id ? updateMemory(memory, input) : memory));
-      showNotice("Memory updated — Mimo will remember the new version.");
-    } else {
-      setMemories((current) => [createMemory(input), ...current]);
-      showNotice("Memory saved — nice, that’s one less thing to hold in your head.");
+  const handleSaveMemory = async (input: MemoryInput) => {
+    try {
+      if (auth.configured && auth.user) {
+        const saved = editingMemory ? await updateCloudMemory(editingMemory.id, input) : await createCloudMemory(input);
+        setMemories((current) => editingMemory ? current.map((memory) => memory.id === editingMemory.id ? saved : memory) : [saved, ...current]);
+      } else if (editingMemory) {
+        setMemories((current) => current.map((memory) => memory.id === editingMemory.id ? updateMemory(memory, input) : memory));
+      } else {
+        setMemories((current) => [createMemory(input), ...current]);
+      }
+      showNotice(editingMemory ? "Memory updated — Mimo will remember the new version." : "Memory saved — nice, that’s one less thing to hold in your head.");
+      setCaptureOpen(false);
+      setEditingMemory(null);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Mimo could not save that memory.");
     }
-    setCaptureOpen(false);
-    setEditingMemory(null);
   };
 
-  const handleDelete = (memory: Memory) => {
+  const handleDelete = async (memory: Memory) => {
     if (!window.confirm(`Delete “${memory.title}”? This cannot be undone.`)) return;
-    setMemories((current) => current.filter((candidate) => candidate.id !== memory.id));
-    if (viewingMemory?.id === memory.id) setViewingMemory(null);
-    showNotice("Memory deleted.");
+    try {
+      if (auth.configured && auth.user) await deleteCloudMemory(memory.id);
+      setMemories((current) => current.filter((candidate) => candidate.id !== memory.id));
+      if (viewingMemory?.id === memory.id) setViewingMemory(null);
+      showNotice("Memory deleted.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Mimo could not delete that memory.");
+    }
   };
 
-  const loadDemo = (reset = false) => {
+  const loadDemo = async (reset = false) => {
     const demo = cloneDemoMemories();
-    setMemories((current) => reset ? demo : addDemoMemories(current, demo));
-    showNotice(reset ? "Demo memories restored." : "Sample memories added — try asking Mimo about the AI project.");
+    try {
+      if (auth.configured && auth.user) {
+        const current = reset ? [] : memories;
+        const missing = demo.filter((candidate) => !current.some((memory) => memory.title === candidate.title));
+        const inserted = await insertCloudMemories(missing.map(({ title, content, tags }) => ({ title, content, tags })));
+        setMemories(reset ? inserted : [...inserted, ...current]);
+      } else {
+        setMemories((current) => reset ? demo : addDemoMemories(current, demo));
+      }
+      showNotice(reset ? "Demo memories restored." : "Sample memories added — try asking Mimo about the AI project.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Mimo could not load sample memories.");
+    }
   };
 
   const askMimo = async () => {
@@ -132,10 +175,11 @@ export default function HomePage() {
       <main className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1240px] px-5 py-7 sm:px-8 sm:py-9 lg:px-12">
           {notice ? <div className="fixed right-5 top-5 z-50 max-w-sm rounded-xl bg-[#302845] px-4 py-3 text-xs font-semibold text-white shadow-2xl" role="status">{notice}</div> : null}
+          <div className="mb-5 flex justify-end"><AccountMenu onNotice={showNotice} /></div>
           {view === "workspace" ? (
-            <WorkspaceView answer={answer} answerError={answerError} answerLoading={answerLoading} memories={memories} onAsk={askMimo} onDelete={handleDelete} onEdit={openCapture} onLoadDemo={() => loadDemo(false)} onOpenMemory={setViewingMemory} onSaveFromQuestion={() => openCapture()} question={question} recentMemories={recentMemories} setQuestion={setQuestion} onNavigate={setView} />
+            <WorkspaceView answer={answer} answerError={answerError} answerLoading={answerLoading} memories={memories} memoryLoading={memoryLoading} onAsk={askMimo} onDelete={handleDelete} onEdit={openCapture} onLoadDemo={() => loadDemo(false)} onOpenMemory={setViewingMemory} onSaveFromQuestion={() => openCapture()} question={question} recentMemories={recentMemories} setQuestion={setQuestion} onNavigate={setView} />
           ) : (
-            <LibraryView memories={filteredMemories} query={libraryQuery} onDelete={handleDelete} onEdit={openCapture} onOpenMemory={setViewingMemory} onQueryChange={setLibraryQuery} onCapture={() => openCapture()} onTryDemo={tryDemoQuestion} />
+            <LibraryView memories={filteredMemories} memoryLoading={memoryLoading} query={libraryQuery} onDelete={handleDelete} onEdit={openCapture} onOpenMemory={setViewingMemory} onQueryChange={setLibraryQuery} onCapture={() => openCapture()} onTryDemo={tryDemoQuestion} />
           )}
         </div>
       </main>
@@ -148,6 +192,7 @@ export default function HomePage() {
 type WorkspaceViewProps = {
   memories: Memory[];
   recentMemories: Memory[];
+  memoryLoading: boolean;
   question: string;
   setQuestion: (value: string) => void;
   onAsk: () => void;
@@ -162,7 +207,7 @@ type WorkspaceViewProps = {
   answerError: string | null;
 };
 
-function WorkspaceView({ memories, recentMemories, question, setQuestion, onAsk, onOpenMemory, onDelete, onEdit, onLoadDemo, onSaveFromQuestion, onNavigate, answer, answerLoading, answerError }: WorkspaceViewProps) {
+function WorkspaceView({ memories, recentMemories, memoryLoading, question, setQuestion, onAsk, onOpenMemory, onDelete, onEdit, onLoadDemo, onSaveFromQuestion, onNavigate, answer, answerLoading, answerError }: WorkspaceViewProps) {
   return (
     <>
       <header className="mb-8 flex items-start justify-between gap-6">
@@ -179,7 +224,7 @@ function WorkspaceView({ memories, recentMemories, question, setQuestion, onAsk,
           <AnswerPanel answer={answer} error={answerError} loading={answerLoading} memories={memories} onOpenMemory={onOpenMemory} onSaveFromQuestion={onSaveFromQuestion} />
           <section>
             <div className="mb-3 flex items-center justify-between"><div><p className="eyebrow">Your latest notes</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.03em] text-[#342e4c]">Recent memories</h2></div><button className="quiet-button" onClick={() => onNavigate("library")} type="button">View library <ChevronRight size={15} /></button></div>
-            {recentMemories.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-3">{recentMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} onDelete={onDelete} onEdit={onEdit} onOpen={onOpenMemory} />)}</div> : <EmptyState actionLabel="Load sample data" description="Save your first note or load a few sample memories to see how Mimo connects the dots." onAction={onLoadDemo} title="Your memory shelf is ready" />}
+            {memoryLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-3"><div className="h-[202px] animate-pulse rounded-3xl bg-white ring-1 ring-[#eeeaf5]" /><div className="hidden h-[202px] animate-pulse rounded-3xl bg-white ring-1 ring-[#eeeaf5] md:block" /></div> : recentMemories.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-3">{recentMemories.map((memory) => <MemoryCard key={memory.id} memory={memory} onDelete={onDelete} onEdit={onEdit} onOpen={onOpenMemory} />)}</div> : <EmptyState actionLabel="Load sample data" description="Save your first note or load a few sample memories to see how Mimo connects the dots." onAction={onLoadDemo} title="Your memory shelf is ready" />}
           </section>
         </div>
         <aside className="hidden xl:block">
@@ -199,6 +244,7 @@ function WorkspaceView({ memories, recentMemories, question, setQuestion, onAsk,
 
 type LibraryViewProps = {
   memories: Memory[];
+  memoryLoading: boolean;
   query: string;
   onQueryChange: (query: string) => void;
   onOpenMemory: (memory: Memory) => void;
@@ -208,12 +254,12 @@ type LibraryViewProps = {
   onTryDemo: () => void;
 };
 
-function LibraryView({ memories, query, onQueryChange, onOpenMemory, onEdit, onDelete, onCapture, onTryDemo }: LibraryViewProps) {
+function LibraryView({ memories, memoryLoading, query, onQueryChange, onOpenMemory, onEdit, onDelete, onCapture, onTryDemo }: LibraryViewProps) {
   return (
     <>
       <header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow">Your personal archive</p><h1 className="mt-1.5 text-3xl font-extrabold tracking-[-0.06em] text-[#302845]">Memory library</h1><p className="mt-2 text-sm leading-6 text-[#817b96]">Everything you have asked Mimo to hold onto, in one calm place.</p></div><button className="primary-button self-start sm:self-auto" onClick={onCapture} type="button"><Sparkles size={16} /> Save a memory</button></header>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row"><label className="relative block flex-1"><Search className="absolute left-3.5 top-3.5 text-[#aaa5b8]" size={17} /><input className="field pl-10" onChange={(event) => onQueryChange(event.target.value)} placeholder="Search titles, notes, or tags..." value={query} /></label><div className="flex items-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-xs font-semibold text-[#817b96] ring-1 ring-[#eeeaf5]"><Clock3 size={15} className="text-[#9273e6]" /> Chronological</div></div>
-      {memories.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{memories.map((memory) => <MemoryCard key={memory.id} memory={memory} onDelete={onDelete} onEdit={onEdit} onOpen={onOpenMemory} />)}</div> : <EmptyState actionLabel={query ? "Try the demo question" : "Save your first memory"} description={query ? "No notes match that search yet. Try another phrase or load the sample memories." : "This is where your ideas, decisions, and useful details will live."} onAction={query ? onTryDemo : onCapture} title={query ? "No memories found" : "Your library is still quiet"} />}
+      {memoryLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"><div className="h-[202px] animate-pulse rounded-3xl bg-white ring-1 ring-[#eeeaf5]" /><div className="hidden h-[202px] animate-pulse rounded-3xl bg-white ring-1 ring-[#eeeaf5] md:block" /><div className="hidden h-[202px] animate-pulse rounded-3xl bg-white ring-1 ring-[#eeeaf5] xl:block" /></div> : memories.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{memories.map((memory) => <MemoryCard key={memory.id} memory={memory} onDelete={onDelete} onEdit={onEdit} onOpen={onOpenMemory} />)}</div> : <EmptyState actionLabel={query ? "Try the demo question" : "Save your first memory"} description={query ? "No notes match that search yet. Try another phrase or load the sample memories." : "This is where your ideas, decisions, and useful details will live."} onAction={query ? onTryDemo : onCapture} title={query ? "No memories found" : "Your library is still quiet"} />}
       <div className="mt-8 flex items-center justify-center gap-1.5 text-[11px] text-[#aaa5b8]"><BookOpen size={13} /> Your memories are stored locally in this browser.</div>
     </>
   );

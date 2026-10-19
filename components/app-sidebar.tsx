@@ -97,7 +97,7 @@ export function AppSidebar({ activeView, memoryCount, onNavigate, onCapture, onL
           <span className="mimo-float text-2xl" aria-hidden="true">🐘</span>
           <div>
             <p className="text-xs font-bold text-[#69475a]">Tiny reminder</p>
-            <p className="mt-1 text-[11px] leading-5 text-[#a27b8b]">Your notes stay in this browser. Mimo only sends selected notes when you ask.</p>
+            <p className="mt-1 text-[11px] leading-5 text-[#a27b8b]">Guest notes stay local. Signed-in notes are isolated to your account and only selected notes are used when you ask.</p>
           </div>
         </div>
       </div>
