@@ -1,6 +1,6 @@
 # Mimo — Your little mind, with a memory of its own
 
-Mimo is a functional, evidence-backed personal memory assistant. Save ideas, decisions, study notes, and useful details in the browser, then ask natural-language questions and open the exact saved notes behind supported answers.
+Mimo helps you remember what matters without losing valuable thoughts in scattered notes. It is a functional, evidence-backed personal memory assistant: save ideas, decisions, study notes, and useful details in the browser, then ask natural-language questions and open the exact saved notes behind supported answers.
 
 ## What is included
 
