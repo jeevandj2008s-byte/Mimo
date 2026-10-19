@@ -36,7 +36,7 @@ On Windows PowerShell, use `Copy-Item .env.example .env.local` instead of `cp`. 
 npm run dev
 ```
 
-Open <http://localhost:3000>. Use **Load sample memories** in the sidebar (or the empty-state button) and try:
+Open <http://localhost:3000> (or <http://127.0.0.1:3000> if your browser resolves `localhost` unexpectedly). Use **Load sample memories** in the sidebar (or the empty-state button) and try:
 
 > What did I decide to build first for my AI project, and why?
 
