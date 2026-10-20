@@ -47,7 +47,13 @@ Mimo uses Supabase Auth and a Supabase Postgres table. The browser only receives
    ```
 
 4. In **Authentication → Providers**, enable Email and Google.
-5. In Google Cloud Console, create an OAuth web client and use Supabase’s displayed callback URL as the Google redirect URI.
+5. In Google Cloud Console, create an OAuth web client and use this Supabase callback URL as the Google redirect URI:
+
+   ```text
+   https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback
+   ```
+
+   Replace `YOUR_PROJECT_REF` with the subdomain from `NEXT_PUBLIC_SUPABASE_URL`. Paste the Google Client ID and Client Secret into Supabase’s Google provider settings.
 6. In Supabase **Authentication → URL Configuration**, add `http://localhost:3000` and `http://localhost:3000/auth/callback`.
 7. Enable **Anonymous Sign-Ins** if you want guest sessions to sync to Supabase. If it is disabled, Mimo still offers a local guest mode.
 8. Restart the dev server after changing `.env.local`.
