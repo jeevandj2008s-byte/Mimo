@@ -21,13 +21,19 @@ test("invalid credentials remain user-friendly", () => {
   assert.equal(authErrorMessage({ message: "Invalid login credentials" }), "That email or password is not correct.");
 });
 
+test("Google redirect mismatch identifies the Google Cloud callback", () => {
+  const message = authErrorMessage({ message: "Error 400: redirect_uri_mismatch" });
+  assert.match(message, /gldbtyhgzpudfnuuhauf\.supabase\.co\/auth\/v1\/callback/);
+  assert.match(message, /Google OAuth Web client/);
+});
+
 test("unconfirmed email remains user-friendly", () => {
   assert.equal(authErrorMessage({ message: "Email not confirmed" }), "Please confirm your email before signing in.");
 });
 
 test("both existing redirect error forms retain callback setup guidance", () => {
   for (const message of ["Redirect URL is not allowed", "Invalid redirect_uri"]) {
-    assert.equal(authErrorMessage({ message }), "Google sign-in needs the localhost callback URL in Supabase Authentication → URL Configuration.");
+    assert.equal(authErrorMessage({ message }), "Google sign-in needs the Supabase callback URL in the Google OAuth Web client and http://localhost:3000/auth/callback in Supabase URL Configuration.");
   }
 });
 
