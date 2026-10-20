@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Pencil, Tag, X } from "lucide-react";
+import { CalendarDays, FileText, Pencil, Tag, X } from "lucide-react";
 import type { Memory } from "@/lib/types";
 import { formatMemoryDate } from "./memory-card";
 
@@ -30,6 +30,7 @@ export function SourceViewer({ memory, onClose, onEdit }: SourceViewerProps) {
           {memory.tags.length ? <span className="text-[#d5cfe1]">•</span> : null}
           {memory.tags.length ? <span className="flex items-center gap-1.5"><Tag size={14} /> {memory.tags.join(", ")}</span> : null}
         </div>
+        {memory.metadata?.originalName ? <div className="mt-4 flex items-center gap-2 rounded-xl bg-[#f5f1ff] px-3 py-2 text-xs font-semibold text-[#7354c7]"><FileText size={14} /> Imported from {memory.metadata.originalName}{memory.metadata.chunkCount && memory.metadata.chunkCount > 1 ? ` · part ${(memory.metadata.chunkIndex ?? 0) + 1} of ${memory.metadata.chunkCount}` : ""}</div> : null}
         <div className="mt-6 flex justify-end border-t border-[#f1eef7] pt-5">
           <button className="quiet-button" onClick={() => onEdit(memory)} type="button"><Pencil size={15} /> Edit memory</button>
         </div>

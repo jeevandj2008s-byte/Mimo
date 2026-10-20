@@ -5,6 +5,23 @@ export type Memory = {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  metadata?: MemoryMetadata;
+};
+
+export type MemorySourceType = "manual" | "voice" | "upload";
+
+export type MemoryExtractor = "text" | "pdf" | "docx" | "ocr" | "audio";
+
+export type MemoryMetadata = {
+  sourceType?: MemorySourceType;
+  originalName?: string;
+  mimeType?: string;
+  byteSize?: number;
+  extractor?: MemoryExtractor;
+  sourceId?: string;
+  chunkIndex?: number;
+  chunkCount?: number;
+  uploadedAt?: string;
 };
 
 export type MemoryCitation = {
@@ -22,6 +39,7 @@ export type MemoryInput = {
   title: string;
   content: string;
   tags: string[];
+  metadata?: MemoryMetadata;
 };
 
 export type RetrievalOptions = {

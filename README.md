@@ -8,6 +8,8 @@ Mimo helps you remember what matters without losing valuable thoughts in scatter
 - Guest mode with a visible guest ID and local browser persistence when Supabase is not configured.
 - Google OAuth and email/password account login through Supabase Auth.
 - Per-account memory storage protected by Postgres Row Level Security.
+- Browser voice dictation for questions and new memories.
+- Secure PDF, TXT, Markdown, DOCX, image, and audio upload processing into searchable memory chunks.
 - Save, edit, delete, search, inspect, and tag memories.
 - Keyword retrieval with title/tag weighting, a relevance threshold, and a five-memory limit.
 - Server-only `/api/ask` route using one configurable OpenAI-compatible provider and server-side account retrieval when Supabase is configured.
@@ -58,6 +60,8 @@ Mimo uses Supabase Auth and a Supabase Postgres table. The browser only receives
 7. Enable **Anonymous Sign-Ins** if you want guest sessions to sync to Supabase. If it is disabled, Mimo still offers a local guest mode.
 8. Restart the dev server after changing `.env.local`.
 
+If you created the `memories` table before the upload feature was added, run the updated `supabase/schema.sql` again. It includes an idempotent `metadata` column migration. Uploads require this column; existing text memories remain compatible.
+
 When a guest signs up with email, Mimo upgrades that guest session so the same memories remain with the new account. Signing into an existing account switches to that account without silently merging unrelated guest data.
 
 ### Google enabled but login says "missing OAuth secret"
@@ -78,6 +82,8 @@ Open <http://localhost:3000> (or <http://127.0.0.1:3000> if your browser resolve
 
 With no provider key, Mimo will not fabricate an answer. A related question displays a clear configuration message; an unrelated question is handled locally with “I couldn't find that in your memories yet. Want to save it?”.
 
+Use **Voice** beside the question box to dictate text through the browser's Speech Recognition API. If that browser API is unavailable, Mimo records a short WebM/WAV/MP3 fallback and sends it to `/api/transcribe`, which requires the server-only `OPENAI_API_KEY`. Use **Upload** (or the import control in the memory dialog) to process a PDF, TXT, Markdown, DOCX, image, or audio recording. Text-based files are processed locally on the server; image OCR and audio transcription require the same server-only key. Uploaded content is chunked below the existing 8,000-character database limit and becomes searchable through the same Mimo retrieval flow.
+
 If you prefer the production server locally, `npm start` now checks for a production build and creates one automatically when needed before serving on <http://localhost:3000>.
 
 ## Checks
@@ -96,6 +102,7 @@ The build is the project’s production check. `make test` is also available for
 | --- | --- |
 | `OPENAI_API_KEY` | Provider credential; never exposed to the browser |
 | `OPENAI_MODEL` | Optional model name, defaults to `gpt-4o-mini` |
+| `OPENAI_VISION_MODEL` | Optional vision model for image OCR, defaults to `OPENAI_MODEL` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Public Supabase project URL; safe with RLS enabled |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase publishable/anon key; safe with RLS enabled |
 
@@ -123,13 +130,18 @@ Set the same server-only environment variables in the deployment platform. The a
 ```text
 app/page.tsx                  client workspace and orchestration
 app/api/ask/route.ts          server-only grounded provider route
+app/api/upload/route.ts       authenticated multipart extraction and memory insert
+app/api/transcribe/route.ts   authenticated audio fallback transcription
 app/auth/callback/route.ts    OAuth/email confirmation callback
 components/                   shell, forms, cards, answer and source UI
 components/auth-provider.tsx  Supabase session and guest state
 components/account-menu.tsx  top-right guest/account menu and auth dialog
+components/speech-input-button.tsx browser voice dictation control
 lib/types.ts                  shared data contracts
 lib/memory-store.ts           localStorage-safe persistence helpers
 lib/memory-repository.ts      Supabase CRUD for the current RLS user
+lib/file-extractors.ts        type validation, PDF/DOCX parsing, OCR/audio provider calls, chunking
+lib/speech.ts                 browser Speech Recognition helpers
 lib/search-memories.ts        modular keyword retrieval and scoring
 lib/validation.ts             input, storage, and citation shape checks
 lib/demo-data.ts              additive fictional demo dataset

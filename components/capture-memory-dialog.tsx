@@ -1,23 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, FileUp, X } from "lucide-react";
 import type { Memory, MemoryInput } from "@/lib/types";
 import { validateMemoryInput, type MemoryValidationErrors } from "@/lib/validation";
+import { appendSpeechText } from "@/lib/speech";
+import { SpeechInputButton } from "./speech-input-button";
 
 type CaptureMemoryDialogProps = {
   open: boolean;
   memory?: Memory | null;
   onClose: () => void;
   onSave: (input: MemoryInput) => void | Promise<void>;
+  onUpload: (file: File) => Promise<void>;
+  uploading?: boolean;
 };
 
-export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMemoryDialogProps) {
+export function CaptureMemoryDialog({ open, memory, onClose, onSave, onUpload, uploading = false }: CaptureMemoryDialogProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
   const [errors, setErrors] = useState<MemoryValidationErrors>({});
   const [saving, setSaving] = useState(false);
+  const [voiceUsed, setVoiceUsed] = useState(false);
+  const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -25,6 +31,8 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
     setContent(memory?.content ?? "");
     setTags(memory?.tags.join(", ") ?? "");
     setErrors({});
+    setVoiceUsed(false);
+    setSelectedFilename(null);
   }, [open, memory]);
 
   if (!open) return null;
@@ -37,7 +45,7 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
     if (!result.valid || !result.value) return;
     setSaving(true);
     try {
-      await onSave(result.value);
+      await onSave({ ...result.value, ...(voiceUsed ? { metadata: { sourceType: "voice", extractor: "text" } } : {}) });
     } finally {
       setSaving(false);
     }
@@ -68,12 +76,14 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave }: CaptureMe
               {errors.content ? <p className="text-xs font-semibold text-[#bd6c8d]">{errors.content}</p> : <span />}
               <span className="text-[10px] font-medium text-[#aaa5b8]">{content.length}/8000</span>
             </div>
+            {!isEditing ? <div className="mt-2 flex flex-wrap items-center gap-2"><SpeechInputButton disabled={saving || uploading} label="Dictate note" onTranscript={(transcript) => { setContent((current) => appendSpeechText(current, transcript)); setVoiceUsed(true); }} /><span className="text-[10px] text-[#aaa5b8]">Speak a memory and edit it before saving.</span></div> : null}
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-bold text-[#5d5871]" htmlFor="memory-tags">Tags <span className="font-normal text-[#aaa5b8]">(optional, comma-separated)</span></label>
             <input className="field" id="memory-tags" onChange={(event) => setTags(event.target.value)} placeholder="project, decision, study" value={tags} />
             {errors.tags ? <p className="mt-1.5 text-xs font-semibold text-[#bd6c8d]">{errors.tags}</p> : null}
           </div>
+          {!isEditing ? <div className="rounded-2xl border border-dashed border-[#d5c7ff] bg-[#fbfaff] p-4"><div className="flex items-center gap-2"><FileUp className="text-[#7354c7]" size={16} /><p className="text-xs font-bold text-[#5d5871]">Import a file instead</p></div><p className="mt-1 text-[10px] leading-4 text-[#918aa3]">PDF, TXT, Markdown, DOCX, image, or audio. Mimo extracts it into searchable memories.</p><input accept=".pdf,.txt,.md,.docx,.jpg,.jpeg,.png,.webp,.webm,.wav,.mp3" className="mt-3 block w-full text-xs text-[#817b96] file:mr-3 file:rounded-lg file:border-0 file:bg-[#eee7ff] file:px-3 file:py-2 file:text-[11px] file:font-bold file:text-[#7354c7]" disabled={saving || uploading} onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; setSelectedFilename(file.name); void onUpload(file); event.currentTarget.value = ""; }} type="file" />{selectedFilename ? <p className="mt-2 text-[10px] font-semibold text-[#7354c7]">{uploading ? `Processing ${selectedFilename}...` : `${selectedFilename} processed`}</p> : null}</div> : null}
           <div className="flex flex-col-reverse gap-2 border-t border-[#f1eef7] pt-5 sm:flex-row sm:justify-end">
             <button className="quiet-button" disabled={saving} onClick={onClose} type="button">Cancel</button>
             <button className="primary-button" disabled={saving} type="submit"><Check size={16} /> {saving ? "Saving..." : isEditing ? "Save changes" : "Save memory"}</button>

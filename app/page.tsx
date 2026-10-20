@@ -15,6 +15,7 @@ import { cloneDemoMemories } from "@/lib/demo-data";
 import { addDemoMemories, createMemory, loadMemories, persistMemories, updateMemory } from "@/lib/memory-store";
 import { createCloudMemory, deleteCloudMemory, insertCloudMemories, loadCloudMemories, updateCloudMemory } from "@/lib/memory-repository";
 import { searchMemories } from "@/lib/search-memories";
+import { isMemory } from "@/lib/validation";
 import type { Memory, MemoryInput, RecallAnswer } from "@/lib/types";
 
 const DEMO_QUESTION = "What did I decide to build first for my AI project, and why?";
@@ -34,6 +35,7 @@ export default function HomePage() {
   const [viewingMemory, setViewingMemory] = useState<Memory | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (auth.loading) return;
@@ -124,6 +126,40 @@ export default function HomePage() {
     }
   };
 
+  const handleUpload = async (file: File) => {
+    if (!auth.configured || !auth.user) {
+      showNotice("Sign in to upload files. Guest text memories still work in this browser.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/upload", { method: "POST", body: formData });
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        const error = payload && typeof payload === "object" && typeof (payload as Record<string, unknown>).error === "string" ? (payload as Record<string, string>).error : "Mimo could not process this file.";
+        showNotice(error);
+        return;
+      }
+      const uploaded: unknown[] = payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).memories) ? (payload as Record<string, unknown>).memories as unknown[] : [];
+      if (!uploaded.length || !uploaded.every(isMemory)) {
+        showNotice("Mimo received an invalid upload response and did not add it.");
+        return;
+      }
+      setMemories((current) => [...(uploaded as Memory[]), ...current]);
+      const firstUploaded = uploaded[0] as Memory;
+      showNotice(`${file.name} is now searchable. The extracted text is open in Mimo's text pad.`);
+      setView("workspace");
+      setEditingMemory(firstUploaded);
+      setCaptureOpen(true);
+    } catch {
+      showNotice("Mimo could not upload this file. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const askMimo = async () => {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion || answerLoading) return;
@@ -177,13 +213,13 @@ export default function HomePage() {
           {notice ? <div className="fixed right-5 top-5 z-50 max-w-sm rounded-xl bg-[#302845] px-4 py-3 text-xs font-semibold text-white shadow-2xl" role="status">{notice}</div> : null}
           <div className="mb-5 flex justify-end"><AccountMenu onNotice={showNotice} /></div>
           {view === "workspace" ? (
-            <WorkspaceView answer={answer} answerError={answerError} answerLoading={answerLoading} memories={memories} memoryLoading={memoryLoading} onAsk={askMimo} onDelete={handleDelete} onEdit={openCapture} onLoadDemo={() => loadDemo(false)} onOpenMemory={setViewingMemory} onSaveFromQuestion={() => openCapture()} question={question} recentMemories={recentMemories} setQuestion={setQuestion} onNavigate={setView} />
+            <WorkspaceView answer={answer} answerError={answerError} answerLoading={answerLoading} memories={memories} memoryLoading={memoryLoading} onAsk={askMimo} onDelete={handleDelete} onEdit={openCapture} onLoadDemo={() => loadDemo(false)} onOpenMemory={setViewingMemory} onSaveFromQuestion={() => openCapture()} onUpload={handleUpload} question={question} recentMemories={recentMemories} setQuestion={setQuestion} onNavigate={setView} uploading={uploading} />
           ) : (
             <LibraryView memories={filteredMemories} memoryLoading={memoryLoading} query={libraryQuery} onDelete={handleDelete} onEdit={openCapture} onOpenMemory={setViewingMemory} onQueryChange={setLibraryQuery} onCapture={() => openCapture()} onTryDemo={tryDemoQuestion} />
           )}
         </div>
       </main>
-      <CaptureMemoryDialog memory={editingMemory} onClose={() => { setCaptureOpen(false); setEditingMemory(null); }} onSave={handleSaveMemory} open={captureOpen} />
+      <CaptureMemoryDialog memory={editingMemory} onClose={() => { setCaptureOpen(false); setEditingMemory(null); }} onSave={handleSaveMemory} onUpload={handleUpload} open={captureOpen} uploading={uploading} />
       <SourceViewer memory={viewingMemory} onClose={() => setViewingMemory(null)} onEdit={(memory) => { setViewingMemory(null); openCapture(memory); }} />
     </div>
   );
@@ -200,14 +236,16 @@ type WorkspaceViewProps = {
   onDelete: (memory: Memory) => void;
   onEdit: (memory: Memory) => void;
   onLoadDemo: () => void;
+  onUpload: (file: File) => Promise<void>;
   onSaveFromQuestion: () => void;
   onNavigate: (view: AppView) => void;
   answer: RecallAnswer | null;
   answerLoading: boolean;
   answerError: string | null;
+  uploading: boolean;
 };
 
-function WorkspaceView({ memories, recentMemories, memoryLoading, question, setQuestion, onAsk, onOpenMemory, onDelete, onEdit, onLoadDemo, onSaveFromQuestion, onNavigate, answer, answerLoading, answerError }: WorkspaceViewProps) {
+function WorkspaceView({ memories, recentMemories, memoryLoading, question, setQuestion, onAsk, onOpenMemory, onDelete, onEdit, onLoadDemo, onSaveFromQuestion, onUpload, onNavigate, answer, answerLoading, answerError, uploading }: WorkspaceViewProps) {
   return (
     <>
       <header className="mb-8 flex items-start justify-between gap-6">
@@ -220,7 +258,7 @@ function WorkspaceView({ memories, recentMemories, memoryLoading, question, setQ
 
       <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="min-w-0 space-y-7">
-          <AskPanel loading={answerLoading} onAsk={onAsk} onQuestionChange={setQuestion} question={question} />
+          <AskPanel loading={answerLoading} onAsk={onAsk} onQuestionChange={setQuestion} onUpload={onUpload} question={question} uploading={uploading} />
           <AnswerPanel answer={answer} error={answerError} loading={answerLoading} memories={memories} onOpenMemory={onOpenMemory} onSaveFromQuestion={onSaveFromQuestion} />
           <section>
             <div className="mb-3 flex items-center justify-between"><div><p className="eyebrow">Your latest notes</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.03em] text-[#342e4c]">Recent memories</h2></div><button className="quiet-button" onClick={() => onNavigate("library")} type="button">View library <ChevronRight size={15} /></button></div>

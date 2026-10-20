@@ -1,4 +1,4 @@
-import type { Memory, MemoryInput } from "./types";
+import type { Memory, MemoryInput, MemoryMetadata } from "./types";
 
 export const MAX_TITLE_LENGTH = 120;
 export const MAX_CONTENT_LENGTH = 8000;
@@ -24,6 +24,7 @@ export function validateMemoryInput(input: Partial<MemoryInput>): {
         .map((tag) => tag.trim().toLowerCase())
         .filter(Boolean)
     : [];
+  const metadata = isMemoryMetadata(input.metadata) ? input.metadata : undefined;
   const errors: MemoryValidationErrors = {};
 
   if (!title) errors.title = "Give this memory a short title.";
@@ -43,9 +44,27 @@ export function validateMemoryInput(input: Partial<MemoryInput>): {
     valid: Object.keys(errors).length === 0,
     errors,
     ...(Object.keys(errors).length === 0
-      ? { value: { title, content, tags: [...new Set(tags)] } }
+      ? { value: { title, content, tags: [...new Set(tags)], ...(metadata ? { metadata } : {}) } }
       : {}),
   };
+}
+
+export function isMemoryMetadata(value: unknown): value is MemoryMetadata {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  const sourceTypes = new Set(["manual", "voice", "upload"]);
+  const extractors = new Set(["text", "pdf", "docx", "ocr", "audio"]);
+  return (
+    (candidate.sourceType === undefined || (typeof candidate.sourceType === "string" && sourceTypes.has(candidate.sourceType))) &&
+    (candidate.originalName === undefined || typeof candidate.originalName === "string") &&
+    (candidate.mimeType === undefined || typeof candidate.mimeType === "string") &&
+    (candidate.byteSize === undefined || (typeof candidate.byteSize === "number" && Number.isFinite(candidate.byteSize) && candidate.byteSize >= 0)) &&
+    (candidate.extractor === undefined || (typeof candidate.extractor === "string" && extractors.has(candidate.extractor))) &&
+    (candidate.sourceId === undefined || typeof candidate.sourceId === "string") &&
+    (candidate.chunkIndex === undefined || (typeof candidate.chunkIndex === "number" && Number.isInteger(candidate.chunkIndex) && candidate.chunkIndex >= 0)) &&
+    (candidate.chunkCount === undefined || (typeof candidate.chunkCount === "number" && Number.isInteger(candidate.chunkCount) && candidate.chunkCount > 0)) &&
+    (candidate.uploadedAt === undefined || (typeof candidate.uploadedAt === "string" && !Number.isNaN(Date.parse(candidate.uploadedAt))))
+  );
 }
 
 export function isMemory(value: unknown): value is Memory {
@@ -61,7 +80,8 @@ export function isMemory(value: unknown): value is Memory {
     typeof candidate.createdAt === "string" &&
     !Number.isNaN(Date.parse(candidate.createdAt)) &&
     typeof candidate.updatedAt === "string" &&
-    !Number.isNaN(Date.parse(candidate.updatedAt))
+    !Number.isNaN(Date.parse(candidate.updatedAt)) &&
+    (candidate.metadata === undefined || isMemoryMetadata(candidate.metadata))
   );
 }
 
