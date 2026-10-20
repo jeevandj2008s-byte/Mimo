@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { AuthChangeEvent, User } from "@supabase/supabase-js";
 import { getUserDisplayName, isGuestUser } from "@/lib/auth-utils";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { isSupabaseConfigured, supabase, supabaseAnonKey, supabaseUrl } from "@/lib/supabase/client";
 
 const GUEST_ID_KEY = "mimo.guest.id";
 
@@ -119,6 +119,19 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     displayName: getUserDisplayName(user),
     signInWithGoogle: async () => {
       if (!supabase) return { error: "Add the Supabase environment variables to enable account login." };
+      if (supabaseUrl && supabaseAnonKey) {
+        try {
+          const providerResponse = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+            headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${supabaseAnonKey}` },
+          });
+          const providerSettings = await providerResponse.json() as { external?: { google?: boolean } };
+          if (!providerResponse.ok || providerSettings.external?.google !== true) {
+            return { error: "Google sign-in is not enabled in Supabase yet. Open Supabase → Authentication → Providers → Google, add Google OAuth credentials, enable it, and try again." };
+          }
+        } catch {
+          return { error: "Mimo could not verify Google sign-in with Supabase. Check your Supabase URL and try again." };
+        }
+      }
       const options = { redirectTo: `${window.location.origin}/auth/callback` };
       const { error } = user && isGuestUser(user)
         ? await supabase.auth.linkIdentity({ provider: "google", options })
