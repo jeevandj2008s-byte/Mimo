@@ -60,6 +60,12 @@ Mimo uses Supabase Auth and a Supabase Postgres table. The browser only receives
 
 When a guest signs up with email, Mimo upgrades that guest session so the same memories remain with the new account. Signing into an existing account switches to that account without silently merging unrelated guest data.
 
+### Google enabled but login says "missing OAuth secret"
+
+Enabling the provider alone is not sufficient. In **Google Auth Platform → Clients** (Google Cloud Console), open the **Web application** OAuth client. Copy its **Client ID** and **Client Secret** into **Supabase → Authentication → Providers → Google**, then save. These are Google OAuth credentials, not the Supabase publishable key. Keep the secret only in Supabase; never paste it into chat, GitHub, or a `NEXT_PUBLIC_` variable. Leave **Skip nonce checks** off.
+
+Mimo checks the actual Supabase authorization response via `/api/auth/google/status` before leaving the app. A missing secret or disabled provider returns a setup message in the dialog, not a raw JSON page. A successful readiness check only means Supabase can redirect to Google; the browser must still complete Google's consent and the callback to verify full login.
+
 ## Run locally
 
 ```bash
