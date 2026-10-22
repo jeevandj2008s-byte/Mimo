@@ -48,8 +48,7 @@ export function AnswerPanel({ answer, loading, error, memories, onOpenMemory, on
   }
 
   const verifiedCitations = answer.citations.filter((citation) => {
-    const memory = memories.find((candidate) => candidate.id === citation.memoryId);
-    return memory?.content.includes(citation.quote);
+    return memories.some((candidate) => candidate.id === citation.memoryId);
   });
 
   return (

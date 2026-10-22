@@ -14,6 +14,7 @@ import { SourceViewer } from "@/components/source-viewer";
 import { cloneDemoMemories } from "@/lib/demo-data";
 import { addDemoMemories, createMemory, loadMemories, persistMemories, updateMemory } from "@/lib/memory-store";
 import { createCloudMemory, deleteCloudMemory, insertCloudMemories, loadCloudMemories, updateCloudMemory } from "@/lib/memory-repository";
+import { saveFileToVault } from "@/lib/file-storage";
 import { searchMemories } from "@/lib/search-memories";
 import { isMemory } from "@/lib/validation";
 import type { Memory, MemoryInput, RecallAnswer } from "@/lib/types";
@@ -127,12 +128,11 @@ export default function HomePage() {
   };
 
   const handleUpload = async (file: File) => {
-    if (!auth.configured || !auth.user) {
-      showNotice("Sign in to upload files. Guest text memories still work in this browser.");
-      return;
-    }
     setUploading(true);
     try {
+      // Store in client vault by filename immediately
+      await saveFileToVault(file.name, file, file.name, file.type || "application/octet-stream");
+
       const formData = new FormData();
       formData.append("file", file);
       const response = await fetch("/api/upload", { method: "POST", body: formData });
@@ -147,12 +147,19 @@ export default function HomePage() {
         showNotice("Mimo received an invalid upload response and did not add it.");
         return;
       }
-      setMemories((current) => [...(uploaded as Memory[]), ...current]);
-      const firstUploaded = uploaded[0] as Memory;
-      showNotice(`${file.name} is now searchable. The extracted text is open in Mimo's text pad.`);
+      const newMemories = uploaded as Memory[];
+
+      // Associate stored file with all resulting memory IDs and sourceId
+      for (const mem of newMemories) {
+        if (mem.id) await saveFileToVault(mem.id, file, file.name, file.type || "application/octet-stream");
+        if (mem.metadata?.sourceId) await saveFileToVault(mem.metadata.sourceId, file, file.name, file.type || "application/octet-stream");
+      }
+
+      setMemories((current) => [...newMemories, ...current]);
+      const firstUploaded = newMemories[0];
+      showNotice(`${file.name} is now in Mimo! You can view the document and ask questions about it.`);
       setView("workspace");
-      setEditingMemory(firstUploaded);
-      setCaptureOpen(true);
+      setViewingMemory(firstUploaded);
     } catch {
       showNotice("Mimo could not upload this file. Check your connection and try again.");
     } finally {
@@ -167,11 +174,21 @@ export default function HomePage() {
     setAnswerError(null);
     setAnswerLoading(true);
 
-    const relevantMemories = searchMemories(trimmedQuestion, memories);
-    if (relevantMemories.length === 0) {
-      setAnswer({ answer: "I couldn't find that in your memories yet. Want to save it?", citations: [], insufficientEvidence: true });
+    if (memories.length === 0) {
+      setAnswer({
+        answer: "You haven't saved or uploaded any memories or files to Mimo yet. Upload a PDF, document, or save a note to get started!",
+        citations: [],
+        insufficientEvidence: true,
+      });
       setAnswerLoading(false);
       return;
+    }
+
+    let relevantMemories = searchMemories(trimmedQuestion, memories);
+    // If the question is broad or conversational (e.g. "what do you have", "show my files"),
+    // pass the user's available memories to the AI rather than short-circuiting.
+    if (relevantMemories.length === 0) {
+      relevantMemories = memories.slice(0, 5);
     }
 
     try {
@@ -220,7 +237,17 @@ export default function HomePage() {
         </div>
       </main>
       <CaptureMemoryDialog memory={editingMemory} onClose={() => { setCaptureOpen(false); setEditingMemory(null); }} onSave={handleSaveMemory} onUpload={handleUpload} open={captureOpen} uploading={uploading} />
-      <SourceViewer memory={viewingMemory} onClose={() => setViewingMemory(null)} onEdit={(memory) => { setViewingMemory(null); openCapture(memory); }} />
+      <SourceViewer
+        memory={viewingMemory}
+        onClose={() => setViewingMemory(null)}
+        onEdit={(memory) => {
+          setViewingMemory(null);
+          openCapture(memory);
+        }}
+        onAttach={(memory, file) => {
+          showNotice(`Attached ${file.name} to "${memory.title}"!`);
+        }}
+      />
     </div>
   );
 }

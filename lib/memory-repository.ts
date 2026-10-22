@@ -21,14 +21,33 @@ function missingMetadataColumn(message: string): boolean {
 }
 
 function toMemory(row: MemoryRow): Memory {
+  const tags = Array.isArray(row.tags) ? row.tags : [];
+  let metadata = row.metadata;
+
+  // If metadata column was missing in Supabase, infer from tags and title
+  if (!metadata || Object.keys(metadata).length === 0) {
+    const isPdf = tags.includes("pdf") || row.title.toLowerCase().includes("pdf");
+    const isImage = tags.some((t) => ["jpg", "jpeg", "png", "webp", "ocr"].includes(t));
+    const isAudio = tags.some((t) => ["audio", "mp3", "wav", "webm"].includes(t));
+    const isUpload = tags.includes("upload") || isPdf || isImage || isAudio;
+
+    if (isUpload) {
+      metadata = {
+        sourceType: "upload",
+        extractor: isPdf ? "pdf" : isImage ? "ocr" : isAudio ? "audio" : "text",
+        originalName: isPdf && !row.title.toLowerCase().endsWith(".pdf") ? `${row.title}.pdf` : row.title,
+      };
+    }
+  }
+
   return {
     id: row.id,
     title: row.title,
     content: row.content,
-    tags: Array.isArray(row.tags) ? row.tags : [],
+    tags,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    ...(row.metadata ? { metadata: row.metadata } : {}),
+    ...(metadata ? { metadata } : {}),
   };
 }
 

@@ -30,7 +30,24 @@ export function loadMemories(): Memory[] {
 
 export function persistMemories(memories: Memory[]): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(sortMemories(memories)));
+  try {
+    window.localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(sortMemories(memories)));
+  } catch (error) {
+    // If localStorage quota is reached (e.g. from large embedded fileData),
+    // strip the heavy fileData string from the localStorage cache. The actual
+    // binary file remains safely stored in IndexedDB.
+    try {
+      const stripped = memories.map((m) => {
+        if (!m.metadata?.fileData) return m;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { fileData, ...restMeta } = m.metadata;
+        return { ...m, metadata: restMeta };
+      });
+      window.localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(sortMemories(stripped)));
+    } catch {
+      console.warn("Could not persist memories to localStorage:", error);
+    }
+  }
 }
 
 export function createMemory(input: MemoryInput): Memory {

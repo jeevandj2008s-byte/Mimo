@@ -122,7 +122,8 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
         if (!response.ok || readiness.ready !== true) {
           return { error: typeof readiness.error === "string" ? readiness.error : "Google sign-in is not ready. Check the provider settings in Supabase." };
         }
-        const options = { redirectTo: `${window.location.origin}/auth/callback`, skipBrowserRedirect: true };
+        const safeOrigin = window.location.origin.replace(/^http:\/\/0\.0\.0\.0(?=:|$)/, "http://localhost");
+        const options = { redirectTo: `${safeOrigin}/auth/callback`, skipBrowserRedirect: true };
         const { data, error } = user && isGuestUser(user)
           ? await supabase.auth.linkIdentity({ provider: "google", options })
           : await supabase.auth.signInWithOAuth({ provider: "google", options });
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
       const guest = user && isGuestUser(user);
       const result = guest
         ? await client.auth.updateUser({ email, password })
-        : await client.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } });
+        : await client.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin.replace(/^http:\/\/0\.0\.0\.0(?=:|$)/, "http://localhost")}/auth/callback` } });
       const session = "session" in result.data ? result.data.session : null;
       return {
         error: result.error ? authErrorMessage(result.error) : null,

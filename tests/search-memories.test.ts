@@ -32,3 +32,26 @@ test("retrieval is bounded and does not return recent notes without relevance", 
   const results = searchMemories("topic", memories, { limit: 5, threshold: 4 });
   assert.equal(results.length, 5);
 });
+
+test("retrieval finds uploaded PDF when user asks for 'phy pdf' or 'physics notes'", () => {
+  const physicsDoc: Memory = {
+    id: "phy-doc",
+    title: "Physics Mechanics Notes",
+    content: "Newton's laws of motion and gravitation formulas for the midterm test.",
+    tags: ["upload", "pdf"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    metadata: {
+      sourceType: "upload",
+      originalName: "phy_mechanics_ch1.pdf",
+      extractor: "pdf",
+    },
+  };
+
+  const unrelatedDoc = memory("unrelated", "Grocery list", "Milk, bread, eggs");
+  const results = searchMemories("where is my phy pdf", [unrelatedDoc, physicsDoc]);
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].id, "phy-doc");
+});
+

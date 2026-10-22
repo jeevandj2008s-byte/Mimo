@@ -63,7 +63,9 @@ export function isMemoryMetadata(value: unknown): value is MemoryMetadata {
     (candidate.sourceId === undefined || typeof candidate.sourceId === "string") &&
     (candidate.chunkIndex === undefined || (typeof candidate.chunkIndex === "number" && Number.isInteger(candidate.chunkIndex) && candidate.chunkIndex >= 0)) &&
     (candidate.chunkCount === undefined || (typeof candidate.chunkCount === "number" && Number.isInteger(candidate.chunkCount) && candidate.chunkCount > 0)) &&
-    (candidate.uploadedAt === undefined || (typeof candidate.uploadedAt === "string" && !Number.isNaN(Date.parse(candidate.uploadedAt))))
+    (candidate.uploadedAt === undefined || (typeof candidate.uploadedAt === "string" && !Number.isNaN(Date.parse(candidate.uploadedAt)))) &&
+    (candidate.fileData === undefined || typeof candidate.fileData === "string") &&
+    (candidate.fileUrl === undefined || typeof candidate.fileUrl === "string")
   );
 }
 

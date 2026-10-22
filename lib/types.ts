@@ -22,6 +22,8 @@ export type MemoryMetadata = {
   chunkIndex?: number;
   chunkCount?: number;
   uploadedAt?: string;
+  fileData?: string;
+  fileUrl?: string;
 };
 
 export type MemoryCitation = {

@@ -40,14 +40,38 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave, onUpload, u
   const isEditing = Boolean(memory);
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const result = validateMemoryInput({ title, content, tags: tags.split(",") });
+    const result = validateMemoryInput({
+      title,
+      content,
+      tags: tags.split(","),
+      metadata: memory?.metadata,
+    });
     setErrors(result.errors);
     if (!result.valid || !result.value) return;
     setSaving(true);
     try {
-      await onSave({ ...result.value, ...(voiceUsed ? { metadata: { sourceType: "voice", extractor: "text" } } : {}) });
+      await onSave({
+        ...result.value,
+        metadata: {
+          ...memory?.metadata,
+          ...(voiceUsed ? { sourceType: "voice", extractor: "text" } : {}),
+        },
+      });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleFileInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.currentTarget.value = "";
+    setSelectedFilename(file.name);
+    try {
+      await onUpload(file);
+      onClose();
+    } catch {
+      // Keep dialog open if upload failed
     }
   };
 
@@ -83,7 +107,7 @@ export function CaptureMemoryDialog({ open, memory, onClose, onSave, onUpload, u
             <input className="field" id="memory-tags" onChange={(event) => setTags(event.target.value)} placeholder="project, decision, study" value={tags} />
             {errors.tags ? <p className="mt-1.5 text-xs font-semibold text-[#bd6c8d]">{errors.tags}</p> : null}
           </div>
-          {!isEditing ? <div className="rounded-2xl border border-dashed border-[#d5c7ff] bg-[#fbfaff] p-4"><div className="flex items-center gap-2"><FileUp className="text-[#7354c7]" size={16} /><p className="text-xs font-bold text-[#5d5871]">Import a file instead</p></div><p className="mt-1 text-[10px] leading-4 text-[#918aa3]">PDF, TXT, Markdown, DOCX, image, or audio. Mimo extracts it into searchable memories.</p><input accept=".pdf,.txt,.md,.docx,.jpg,.jpeg,.png,.webp,.webm,.wav,.mp3" className="mt-3 block w-full text-xs text-[#817b96] file:mr-3 file:rounded-lg file:border-0 file:bg-[#eee7ff] file:px-3 file:py-2 file:text-[11px] file:font-bold file:text-[#7354c7]" disabled={saving || uploading} onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; setSelectedFilename(file.name); void onUpload(file); event.currentTarget.value = ""; }} type="file" />{selectedFilename ? <p className="mt-2 text-[10px] font-semibold text-[#7354c7]">{uploading ? `Processing ${selectedFilename}...` : `${selectedFilename} processed`}</p> : null}</div> : null}
+          {!isEditing ? <div className="rounded-2xl border border-dashed border-[#d5c7ff] bg-[#fbfaff] p-4"><div className="flex items-center gap-2"><FileUp className="text-[#7354c7]" size={16} /><p className="text-xs font-bold text-[#5d5871]">Import a file instead</p></div><p className="mt-1 text-[10px] leading-4 text-[#918aa3]">PDF, TXT, Markdown, DOCX, image, or audio. Mimo extracts it into searchable memories.</p><input accept=".pdf,.txt,.md,.docx,.jpg,.jpeg,.png,.webp,.webm,.wav,.mp3" className="mt-3 block w-full text-xs text-[#817b96] file:mr-3 file:rounded-lg file:border-0 file:bg-[#eee7ff] file:px-3 file:py-2 file:text-[11px] file:font-bold file:text-[#7354c7]" disabled={saving || uploading} onChange={handleFileInput} type="file" />{selectedFilename ? <p className="mt-2 text-[10px] font-semibold text-[#7354c7]">{uploading ? `Processing ${selectedFilename}...` : `${selectedFilename} processed`}</p> : null}</div> : null}
           <div className="flex flex-col-reverse gap-2 border-t border-[#f1eef7] pt-5 sm:flex-row sm:justify-end">
             <button className="quiet-button" disabled={saving} onClick={onClose} type="button">Cancel</button>
             <button className="primary-button" disabled={saving} type="submit"><Check size={16} /> {saving ? "Saving..." : isEditing ? "Save changes" : "Save memory"}</button>

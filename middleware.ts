@@ -3,6 +3,16 @@ import { createServerClient } from "@supabase/ssr";
 import { isValidSupabaseKey, isValidSupabaseUrl } from "@/lib/supabase/config";
 
 export async function middleware(request: NextRequest) {
+  // If the client explicitly navigated to 0.0.0.0 in browser Host header,
+  // redirect them to localhost so Chromium doesn't throw ERR_ADDRESS_INVALID.
+  const host = request.headers.get("host") || "";
+  if (host.startsWith("0.0.0.0")) {
+    const proto = request.headers.get("x-forwarded-proto") || "http";
+    const cleanHost = host.replace(/^0\.0\.0\.0/, "localhost");
+    const redirectTarget = `${proto}://${cleanHost}${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(new URL(redirectTarget));
+  }
+
   const response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

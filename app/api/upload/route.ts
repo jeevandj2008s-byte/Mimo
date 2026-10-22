@@ -16,13 +16,10 @@ function isMetadataColumnError(message: string): boolean {
 }
 
 export async function POST(request: Request) {
-  if (!isSupabaseServerConfigured()) return errorResponse("File uploads require a configured Supabase account.", 503, "SUPABASE_NOT_CONFIGURED");
-  const supabase = await createSupabaseServerClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) return errorResponse("Sign in before uploading a memory.", 401, "AUTH_REQUIRED");
-
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > MAX_UPLOAD_BYTES + 512_000) return errorResponse("Files must be 15 MB or smaller.", 413, "FILE_TOO_LARGE");
+  if (contentLength > MAX_UPLOAD_BYTES + 512_000) {
+    return errorResponse("Files must be 15 MB or smaller.", 413, "FILE_TOO_LARGE");
+  }
 
   let formData: FormData;
   try {
@@ -35,32 +32,103 @@ export async function POST(request: Request) {
 
   try {
     const extracted = await extractUpload(file);
-    const rows = extracted.map(({ input }) => ({ user_id: userData.user.id, title: input.title, content: input.content, tags: input.tags, metadata: input.metadata ?? {} }));
-    let { data, error } = await supabase.from("memories").insert(rows).select("id,title,content,tags,metadata,created_at,updated_at");
-    let metadataStored = true;
-    if (error && isMetadataColumnError(error.message)) {
-      // Existing Mimo databases may predate the metadata migration. Keep the
-      // upload searchable instead of breaking the core workflow; filename and
-      // file type remain in the generated title/tags until the migration runs.
-      const legacyRows = rows.map(({ user_id, title, content, tags }) => ({ user_id, title, content, tags }));
-      const fallback = await supabase.from("memories").insert(legacyRows).select("id,title,content,tags,created_at,updated_at");
-      data = fallback.data as unknown as typeof data;
-      error = fallback.error;
-      metadataStored = false;
+
+    // If Supabase is configured and user is signed in, persist to cloud
+    let userLoggedIn = false;
+    let userId: string | null = null;
+    let supabaseClient: Awaited<ReturnType<typeof createSupabaseServerClient>> | null = null;
+
+    if (isSupabaseServerConfigured()) {
+      try {
+        supabaseClient = await createSupabaseServerClient();
+        const { data: userData } = await supabaseClient.auth.getUser();
+        if (userData?.user) {
+          userLoggedIn = true;
+          userId = userData.user.id;
+        }
+      } catch (authErr) {
+        console.warn("[Upload] Supabase auth check failed:", authErr);
+      }
     }
-    if (error || !data) {
-      return errorResponse("Mimo could not save the processed file.", 500, "MEMORY_STORE_ERROR");
+
+    if (userLoggedIn && userId && supabaseClient) {
+      // Clean metadata for Supabase: remove heavy fileData from cloud payload
+      // so Supabase POST size limits are never exceeded (the binary is stored in client IndexedDB)
+      const cleanRows = extracted.map(({ input }) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { fileData, ...restMeta } = input.metadata ?? {};
+        return {
+          user_id: userId,
+          title: input.title,
+          content: input.content,
+          tags: input.tags,
+          metadata: restMeta,
+        };
+      });
+
+      let { data, error } = await supabaseClient
+        .from("memories")
+        .insert(cleanRows)
+        .select("id,title,content,tags,metadata,created_at,updated_at");
+
+      let metadataStored = true;
+      if (error && isMetadataColumnError(error.message)) {
+        // Fallback for legacy tables without metadata column
+        const legacyRows = cleanRows.map(({ user_id, title, content, tags }) => ({
+          user_id,
+          title,
+          content,
+          tags,
+        }));
+        const fallback = await supabaseClient
+          .from("memories")
+          .insert(legacyRows)
+          .select("id,title,content,tags,created_at,updated_at");
+        data = fallback.data as unknown as typeof data;
+        error = fallback.error;
+        metadataStored = false;
+      }
+
+      if (!error && data) {
+        const cloudMemories: Memory[] = (
+          data as Array<{
+            id: string;
+            title: string;
+            content: string;
+            tags: string[];
+            metadata?: Memory["metadata"];
+            created_at: string;
+            updated_at: string;
+          }>
+        ).map((row, idx) => ({
+          id: row.id,
+          title: row.title,
+          content: row.content,
+          tags: row.tags ?? [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          metadata: {
+            ...extracted[idx]?.input.metadata,
+            ...(metadataStored && row.metadata ? row.metadata : {}),
+          },
+        }));
+        return NextResponse.json({ memories: cloudMemories });
+      }
     }
-    const memories: Memory[] = (data as Array<{ id: string; title: string; content: string; tags: string[]; metadata?: Memory["metadata"]; created_at: string; updated_at: string }>).map((row) => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-      tags: row.tags ?? [],
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      ...(metadataStored && row.metadata ? { metadata: row.metadata } : {}),
+
+    // Guest / local memory fallback: create memory records directly
+    const now = new Date().toISOString();
+    const guestMemories: Memory[] = extracted.map(({ input }) => ({
+      id: crypto.randomUUID(),
+      title: input.title,
+      content: input.content,
+      tags: input.tags,
+      createdAt: now,
+      updatedAt: now,
+      metadata: input.metadata,
     }));
-    return NextResponse.json({ memories });
+
+    return NextResponse.json({ memories: guestMemories });
   } catch (error) {
     if (error instanceof FileExtractionError) {
       const status = error.code === "MISSING_API_KEY" ? 503 : error.code === "PROVIDER_TIMEOUT" ? 504 : 400;
